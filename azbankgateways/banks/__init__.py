@@ -51,6 +51,6 @@ except ImportError:
     pass
 
 try:
-    from .asanpardakht import AsanPardakht  # noqa
+    from .ASANPARDAKHT import AsanPardakht  # noqa
 except ImportError:
     pass
