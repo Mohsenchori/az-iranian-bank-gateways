@@ -9,7 +9,7 @@ BANK_CLASS = getattr(
     settings,
     "CLASS",
     {
-        "BMI": "azbankgateways.banks.bMI",
+        "BMI": "azbankgateways.banks.BMI",
         "SEP": "azbankgateways.banks.SEP",
         "ZARINPAL": "azbankgateways.banks.Zarinpal",
         "IDPAY": "azbankgateways.banks.IDPay",
