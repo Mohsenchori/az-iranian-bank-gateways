@@ -11,6 +11,11 @@ def _lazy_import(module_name, class_name):
 
 # Only import banks that don't have external dependencies or handle gracefully
 try:
+    from .ASANPARDAKHT import AsanPardakht  # noqa
+except ImportError:
+    pass
+
+try:
     from .bahamta import Bahamta  # noqa
 except ImportError:
     pass
@@ -50,7 +55,3 @@ try:
 except ImportError:
     pass
 
-try:
-    from .ASANPARDAKHT import AsanPardakht  # noqa
-except ImportError:
-    pass

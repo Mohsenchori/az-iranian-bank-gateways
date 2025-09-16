@@ -3,6 +3,7 @@ from django.utils.translation import gettext_lazy as _
 
 
 class BankType(models.TextChoices):
+    ASANPARDAKHT = "ASANPARDAKHT", _("ASANPARDAKHT")
     BMI = "BMI", _("BMI")
     SEP = "SEP", _("SEP")
     ZARINPAL = "ZARINPAL", _("Zarinpal")
@@ -11,7 +12,7 @@ class BankType(models.TextChoices):
     BAHAMTA = "BAHAMTA", _("Bahamta")
     MELLAT = "MELLAT", _("Mellat")
     PAYV1 = "PAYV1", _("PayV1")
-    ASANPARDAKHT = "ASANPARDAKHT", _("ASANPARDAKHT")
+    
 
 class CurrencyEnum(models.TextChoices):
     IRR = "IRR", _("Rial")

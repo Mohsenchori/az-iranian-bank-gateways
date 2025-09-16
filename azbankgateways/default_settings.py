@@ -9,6 +9,7 @@ BANK_CLASS = getattr(
     settings,
     "CLASS",
     {
+        "ASANPARDAKHT": "azbankgateways.banks.ASANPARDAKHT",
         "BMI": "azbankgateways.banks.BMI",
         "SEP": "azbankgateways.banks.SEP",
         "ZARINPAL": "azbankgateways.banks.Zarinpal",
@@ -17,7 +18,7 @@ BANK_CLASS = getattr(
         "BAHAMTA": "azbankgateways.banks.Bahamta",
         "MELLAT": "azbankgateways.banks.Mellat",
         "PAYV1": "azbankgateways.banks.PayV1",
-        "ASANPARDAKHT": "azbankgateways.banks.ASANPARDAKHT",
+        
     },
 )
 _AZ_IRANIAN_BANK_GATEWAYS = getattr(settings, "AZ_IRANIAN_BANK_GATEWAYS", {})
