@@ -33,7 +33,6 @@ class AsanPardakht(BaseBank):
                 raise SettingDoesNotExist(f"{item} is not set in settings.")
 
             setattr(self, f"_{item.lower()}", self.default_setting_kwargs[item])
-            print('___________________________________<',self._username)
 
     def get_pay_data(self):
         data = {
