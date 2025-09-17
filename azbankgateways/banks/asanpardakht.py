@@ -163,8 +163,12 @@ class AsanPardakht(BaseBank):
         return "POST"
 
     def _get_gateway_payment_parameter(self):
+        # AsanPardakht requires both RefId and token parameters
+        # RefId is the token we received from the Token API
+        token = self.get_reference_number()
         params = {
-            "RefId": self.get_reference_number(),
+            "RefId": token,
+            "token": token,  # Both parameters should have the same value (the token)
         }
         # Add mobile number if available (optional parameter)
         mobile_number = getattr(self, 'mobile_number', None)
@@ -175,7 +179,7 @@ class AsanPardakht(BaseBank):
             params["mobileap"] = ""
         
         logger.debug(f"Payment parameters: {params}")
-        logger.info(f"Final redirect will be POST to https://asan.shaparak.ir/ with RefId: {self.get_reference_number()}")
+        logger.info(f"Final redirect will be POST to https://asan.shaparak.ir/ with RefId: {token} and token: {token}")
         return params
 
     def prepare_verify_from_gateway(self):
