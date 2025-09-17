@@ -189,17 +189,31 @@ class AsanPardakht(BaseBank):
         logger.debug(f"Sending request to {api_url} with data: {data}")
         try:
             response = requests.post(api_url, json=data, headers=headers, timeout=10)
+            logger.debug(f"Response status code: {response.status_code}")
+            
+            # Log response content for debugging
+            if response.status_code != 200:
+                logger.warning(f"Non-200 response: {response.status_code} - {response.text}")
+            
             response.raise_for_status()
             logger.debug(f"Request successful, status code: {response.status_code}")
         except requests.Timeout:
             logger.exception(f"Asan Pardakht gateway timeout: {data}")
-            raise BankGatewayConnectionError()
+            raise BankGatewayConnectionError("AsanPardakht gateway timeout")
         except requests.ConnectionError:
             logger.exception(f"Asan Pardakht gateway connection error: {data}")
-            raise BankGatewayConnectionError()
+            raise BankGatewayConnectionError("AsanPardakht gateway connection error")
         except requests.HTTPError as e:
-            logger.exception(f"HTTP error occurred: {e}")
-            raise BankGatewayConnectionError()
+            error_msg = f"HTTP error occurred: {e} - Response: {response.text if 'response' in locals() else 'No response'}"
+            logger.exception(error_msg)
+            
+            # Handle specific server errors with more helpful messages
+            if response.status_code == 507:
+                raise BankGatewayConnectionError("AsanPardakht server storage error (507). Please try again later.")
+            elif response.status_code >= 500:
+                raise BankGatewayConnectionError(f"AsanPardakht server error ({response.status_code}). Please try again later.")
+            else:
+                raise BankGatewayConnectionError(f"AsanPardakht API error: {error_msg}")
 
         if as_json:
             response_json = get_json(response)
@@ -217,10 +231,17 @@ class AsanPardakht(BaseBank):
             'pwd': self._password 
         }
 
+        logger.debug(f"Getting server time from: {url}")
         response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
-            server_time = response.text.strip() 
+            server_time = response.text.strip()
+            # Remove quotes if they exist
+            if server_time.startswith('"') and server_time.endswith('"'):
+                server_time = server_time[1:-1]
+            logger.debug(f"Server time received: {server_time}")
             return server_time
         else:
-            raise Exception(f"Failed to retrieve server time: {response.status_code}, {response.text}")
+            error_msg = f"Failed to retrieve server time: {response.status_code}, {response.text}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
