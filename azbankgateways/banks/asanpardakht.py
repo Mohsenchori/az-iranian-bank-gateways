@@ -24,7 +24,10 @@ class AsanPardakht(BaseBank):
 
         self.set_gateway_currency(CurrencyEnum.IRR)
         self._token_api_url = "https://ipgrest.asanpardakht.ir/v1/Token"
-        self._payment_url = "https://asan.shaparak.ir"
+        # Note: If you get gateway errors, try these alternative URLs:
+        # self._payment_url = "https://ipay.asanpardakht.ir/"
+        # self._payment_url = "https://asan.shaparak.ir/pay/"
+        self._payment_url = "https://asan.shaparak.ir/"
         self._verify_api_url = "https://ipgrest.asanpardakht.ir/v1/Verify"
         logger.info("AsanPardakht bank initialization completed")
 
@@ -70,9 +73,21 @@ class AsanPardakht(BaseBank):
         token = self._send_request(self._token_api_url, data, headers, as_json=False)
         print('||||||||||||||||||||||||||||||||||||||||',token)
         logger.info(f"Received token: {token}")
-        if token:
-            self._set_reference_number(token)
-            logger.info(f"Token set as reference number: {token}")
+        
+        if token and token.strip():
+            # Clean the token (remove any extra whitespace or quotes)
+            clean_token = token.strip()
+            if clean_token.startswith('"') and clean_token.endswith('"'):
+                clean_token = clean_token[1:-1]
+            
+            self._set_reference_number(clean_token)
+            logger.info(f"Clean token set as reference number: {clean_token}")
+            
+            # Log the final payment details
+            payment_url = self._get_gateway_payment_url_parameter()
+            payment_params = self._get_gateway_payment_parameter()
+            logger.info(f"Payment URL: {payment_url}")
+            logger.info(f"Payment parameters: {payment_params}")
         else:
             status_text = "Failed to retrieve token from Asan Pardakht"
             self._set_transaction_status_text(status_text)
@@ -132,12 +147,13 @@ class AsanPardakht(BaseBank):
         return self._payment_url
 
     def _get_gateway_payment_method_parameter(self):
-        return "POST"
+        return "GET"
 
     def _get_gateway_payment_parameter(self):
         params = {
             "RefId": self.get_reference_number(),
         }
+        logger.debug(f"Payment parameters: {params}")
         return params
 
     def prepare_verify_from_gateway(self):
