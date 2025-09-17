@@ -59,7 +59,7 @@ class AsanPardakht(BaseBank):
             "localDate": self._get_local_date(),
             "callbackURL": enhanced_callback_url,
             "paymentId": "0",  # According to official examples, this should be "0"
-            "additionalData": ""  # Add missing additionalData field
+            "settlementPortions": []  # Required field from official Postman collection
         }
         logger.debug(f"Enhanced callback URL: {enhanced_callback_url}")
         return data
