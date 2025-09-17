@@ -174,7 +174,7 @@ class AsanPardakht(BaseBank):
             params["mobileap"] = mobile_number
         else:
             # Add empty mobile parameter as per official implementation
-            params["mobileap"] = "+989016251030"
+            params["mobileap"] = "09016251030"
         
         logger.debug(f"Payment parameters: {params}")
         logger.info(f"Final redirect will be POST to https://asan.shaparak.ir with RefId: {token}")
