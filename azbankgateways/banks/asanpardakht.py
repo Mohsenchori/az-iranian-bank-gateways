@@ -156,30 +156,29 @@ class AsanPardakht(BaseBank):
         # AsanPardakht uses https://asan.shaparak.ir for payment processing
         # If you get errors, try the alternative URL below:
         # return "https://ipay.asanpardakht.ir/"
-        return "https://asan.shaparak.ir/"
+        return "https://asan.shaparak.ir"
 
     def _get_gateway_payment_method_parameter(self):
         # AsanPardakht requires POST method according to official examples
         return "POST"
 
     def _get_gateway_payment_parameter(self):
-        # AsanPardakht requires both RefId and token parameters
-        # RefId is the token we received from the Token API
+        # According to official C# example, AsanPardakht only needs RefId and mobileap
+        # The token parameter is NOT needed despite what support said
         token = self.get_reference_number()
         params = {
-            "RefId": token,
-            "token": token,  # Both parameters should have the same value (the token)
+            "RefId": token,  # This is the token we received from the Token API
         }
         # Add mobile number if available (optional parameter)
         mobile_number = getattr(self, 'mobile_number', None)
         if mobile_number:
             params["mobileap"] = mobile_number
         else:
-            # Add empty mobile parameter as per some implementations
+            # Add empty mobile parameter as per official implementation
             params["mobileap"] = ""
         
         logger.debug(f"Payment parameters: {params}")
-        logger.info(f"Final redirect will be POST to https://asan.shaparak.ir/ with RefId: {token} and token: {token}")
+        logger.info(f"Final redirect will be POST to https://asan.shaparak.ir with RefId: {token}")
         return params
 
     def prepare_verify_from_gateway(self):
