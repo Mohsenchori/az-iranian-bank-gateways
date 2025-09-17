@@ -89,7 +89,7 @@ class AsanPardakht(BaseBank):
             if clean_token.startswith('"') and clean_token.endswith('"'):
                 clean_token = clean_token[1:-1]
             
-            self._set_reference_number(token)
+            self._set_reference_number(clean_token)
             logger.info(f"Clean token set as reference number: {clean_token}")
             
             # Log the final payment details
