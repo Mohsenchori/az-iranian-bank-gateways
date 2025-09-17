@@ -1,6 +1,9 @@
 import logging
 import requests
 from azbankgateways.banks import BaseBank
+
+# Create a named logger for azbankgateways
+logger = logging.getLogger('azbankgateways.banks.asanpardakht')
 from azbankgateways.exceptions import (
     BankGatewayConnectionError,
     BankGatewayRejectPayment,
@@ -16,14 +19,17 @@ class AsanPardakht(BaseBank):
     _password = None
 
     def __init__(self, **kwargs):
+        logger.info("AsanPardakht bank initialization started")
         super(AsanPardakht, self).__init__(**kwargs)
 
         self.set_gateway_currency(CurrencyEnum.IRR)
         self._token_api_url = "https://ipgrest.asanpardakht.ir/v1/Token"
         self._payment_url = "https://asan.shaparak.ir"
         self._verify_api_url = "https://ipgrest.asanpardakht.ir/v1/Verify"
+        logger.info("AsanPardakht bank initialization completed")
 
     def get_bank_type(self):
+        logger.debug("AsanPardakht get_bank_type called, returning ASANPARDAKHT")
         return BankType.ASANPARDAKHT
 
     def set_default_settings(self):
@@ -50,22 +56,27 @@ class AsanPardakht(BaseBank):
         super(AsanPardakht, self).prepare_pay()
 
     def pay(self):
+        logger.info("AsanPardakht pay method called")
         super(AsanPardakht, self).pay()
         data = self.get_pay_data()
+        logger.debug(f"AsanPardakht pay data: {data}")
         headers = {
 
             "usr": self._username,
             "pwd": self._password,
         }
 
+        logger.info(f"Sending token request to: {self._token_api_url}")
         token = self._send_request(self._token_api_url, data, headers, as_json=False)
         print('||||||||||||||||||||||||||||||||||||||||',token)
+        logger.info(f"Received token: {token}")
         if token:
             self._set_reference_number(token)
+            logger.info(f"Token set as reference number: {token}")
         else:
             status_text = "Failed to retrieve token from Asan Pardakht"
             self._set_transaction_status_text(status_text)
-            logging.critical(status_text)
+            logger.critical(status_text)
             raise BankGatewayRejectPayment(self.get_transaction_status_text())
 
     def _get_status_text(self, status):
@@ -130,17 +141,20 @@ class AsanPardakht(BaseBank):
         return params
 
     def prepare_verify_from_gateway(self):
+        logger.info("AsanPardakht prepare_verify_from_gateway called")
         super(AsanPardakht, self).prepare_verify_from_gateway()
         request = self.get_request()
         ref_id = request.POST.get("RefId") or self.get_tracking_code()  # استفاده از tracking_code در صورت نبودن RefId
         res_code = request.POST.get("ResCode")
+        logger.debug(f"Received callback - RefId: {ref_id}, ResCode: {res_code}")
         self._set_reference_number(ref_id)
         self._set_bank_record()
         if res_code == "0":
+            logger.info("Payment successful - ResCode is 0")
             self._bank.extra_information = f"ResCode={res_code}, RefId={ref_id}"
             self._bank.save()
         else:
-            logging.error(f"Payment failed with ResCode: {res_code}")
+            logger.error(f"Payment failed with ResCode: {res_code}")
             self._set_payment_status(PaymentStatus.CANCEL_BY_USER)
 
     def verify_from_gateway(self, request):
@@ -169,27 +183,31 @@ class AsanPardakht(BaseBank):
             self._set_payment_status(PaymentStatus.COMPLETE)
         else:
             self._set_payment_status(PaymentStatus.CANCEL_BY_USER)
-            logging.error("Asan Pardakht verification failed.")
+            logger.error("Asan Pardakht verification failed.")
 
     def _send_request(self, api_url, data, headers, as_json=True):
+        logger.debug(f"Sending request to {api_url} with data: {data}")
         try:
             response = requests.post(api_url, json=data, headers=headers, timeout=10)
             response.raise_for_status()
+            logger.debug(f"Request successful, status code: {response.status_code}")
         except requests.Timeout:
-            logging.exception(f"Asan Pardakht gateway timeout: {data}")
+            logger.exception(f"Asan Pardakht gateway timeout: {data}")
             raise BankGatewayConnectionError()
         except requests.ConnectionError:
-            logging.exception(f"Asan Pardakht gateway connection error: {data}")
+            logger.exception(f"Asan Pardakht gateway connection error: {data}")
             raise BankGatewayConnectionError()
         except requests.HTTPError as e:
-            logging.exception(f"HTTP error occurred: {e}")
+            logger.exception(f"HTTP error occurred: {e}")
             raise BankGatewayConnectionError()
 
         if as_json:
             response_json = get_json(response)
+            logger.debug(f"Response JSON: {response_json}")
             self._set_transaction_status_text(response_json.get("Message"))
             return response_json
         else:
+            logger.debug(f"Response text: {response.text}")
             return response.text  
 
     def _get_local_date(self):
