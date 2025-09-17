@@ -27,7 +27,7 @@ class AsanPardakht(BaseBank):
         # Note: If you get gateway errors, try these alternative URLs:
         # self._payment_url = "https://ipay.asanpardakht.ir/"
         # self._payment_url = "https://asan.shaparak.ir/pay/"
-        self._payment_url = "https://asan.shaparak.ir/"
+        self._payment_url = "https://asan.shaparak.ir"
         self._verify_api_url = "https://ipgrest.asanpardakht.ir/v1/Verify"
         logger.info("AsanPardakht bank initialization completed")
 
@@ -44,15 +44,24 @@ class AsanPardakht(BaseBank):
             setattr(self, f"_{item.lower()}", self.default_setting_kwargs[item])
 
     def get_pay_data(self):
+        # Get the base callback URL
+        callback_url = self._get_gateway_callback_url()
+        
+        # Add invoice parameter to callback URL (as per official examples)
+        separator = '&' if '?' in callback_url else '?'
+        enhanced_callback_url = f"{callback_url}{separator}invoice={self.get_tracking_code()}"
+        
         data = {
             "serviceTypeId": 1,
             "merchantConfigurationId": self._merchant_configuration_id,
             "localInvoiceId": self.get_tracking_code(),
             "amountInRials": self.get_gateway_amount(),
             "localDate": self._get_local_date(),
-            "callbackURL": self._get_gateway_callback_url(),
-            "paymentId": self.get_tracking_code(), 
+            "callbackURL": enhanced_callback_url,
+            "paymentId": "0",  # According to official examples, this should be "0"
+            "additionalData": ""  # Add missing additionalData field
         }
+        logger.debug(f"Enhanced callback URL: {enhanced_callback_url}")
         return data
 
     def prepare_pay(self):
@@ -144,15 +153,22 @@ class AsanPardakht(BaseBank):
         return status_codes.get(status, "Unknown error")
 
     def _get_gateway_payment_url_parameter(self):
-        return self._payment_url
+        # AsanPardakht uses https://asan.shaparak.ir for payment processing
+        return "https://asan.shaparak.ir"
 
     def _get_gateway_payment_method_parameter(self):
-        return "GET"
+        # AsanPardakht requires POST method according to official examples
+        return "POST"
 
     def _get_gateway_payment_parameter(self):
         params = {
             "RefId": self.get_reference_number(),
         }
+        # Add mobile number if available (optional parameter)
+        mobile_number = getattr(self, 'mobile_number', None)
+        if mobile_number:
+            params["mobileap"] = mobile_number
+        
         logger.debug(f"Payment parameters: {params}")
         return params
 
@@ -160,18 +176,48 @@ class AsanPardakht(BaseBank):
         logger.info("AsanPardakht prepare_verify_from_gateway called")
         super(AsanPardakht, self).prepare_verify_from_gateway()
         request = self.get_request()
-        ref_id = request.POST.get("RefId") or self.get_tracking_code()  # استفاده از tracking_code در صورت نبودن RefId
-        res_code = request.POST.get("ResCode")
-        logger.debug(f"Received callback - RefId: {ref_id}, ResCode: {res_code}")
-        self._set_reference_number(ref_id)
-        self._set_bank_record()
-        if res_code == "0":
-            logger.info("Payment successful - ResCode is 0")
-            self._bank.extra_information = f"ResCode={res_code}, RefId={ref_id}"
-            self._bank.save()
+        
+        # AsanPardakht sends back the payment through callback URL with invoice parameter
+        # We need to call TranResult API to get the actual transaction details
+        invoice_id = request.GET.get("invoice") or request.POST.get("invoice")
+        
+        if invoice_id:
+            logger.debug(f"Received callback with invoice ID: {invoice_id}")
+            # Call TranResult API to get transaction details
+            try:
+                tran_result = self._get_transaction_result(invoice_id)
+                if tran_result and 'payGateTranID' in tran_result:
+                    self._set_reference_number(tran_result['payGateTranID'])
+                    logger.info(f"Transaction result: {tran_result}")
+                    
+                    # Check if transaction was successful
+                    if tran_result.get('respCode') == '0' or tran_result.get('resCode') == '0':
+                        logger.info("Payment successful according to TranResult")
+                        self._bank.extra_information = f"TranResult={tran_result}"
+                        self._bank.save()
+                    else:
+                        logger.error(f"Payment failed according to TranResult: {tran_result}")
+                        self._set_payment_status(PaymentStatus.CANCEL_BY_USER)
+                else:
+                    logger.error("Failed to get transaction result")
+                    self._set_payment_status(PaymentStatus.ERROR)
+            except Exception as e:
+                logger.exception(f"Error getting transaction result: {e}")
+                self._set_payment_status(PaymentStatus.ERROR)
         else:
-            logger.error(f"Payment failed with ResCode: {res_code}")
-            self._set_payment_status(PaymentStatus.CANCEL_BY_USER)
+            # Fallback to old method if invoice parameter not found
+            ref_id = request.POST.get("RefId") or self.get_tracking_code()
+            res_code = request.POST.get("ResCode")
+            logger.debug(f"Fallback: Received callback - RefId: {ref_id}, ResCode: {res_code}")
+            self._set_reference_number(ref_id)
+            self._set_bank_record()
+            if res_code == "0":
+                logger.info("Payment successful - ResCode is 0")
+                self._bank.extra_information = f"ResCode={res_code}, RefId={ref_id}"
+                self._bank.save()
+            else:
+                logger.error(f"Payment failed with ResCode: {res_code}")
+                self._set_payment_status(PaymentStatus.CANCEL_BY_USER)
 
     def verify_from_gateway(self, request):
         super(AsanPardakht, self).verify_from_gateway(request)
@@ -240,7 +286,44 @@ class AsanPardakht(BaseBank):
             logger.debug(f"Response text: {response.text}")
             return response.text  
 
+    def _get_transaction_result(self, invoice_id):
+        """
+        Call AsanPardakht TranResult API to get transaction details
+        Based on official PHP example
+        """
+        url = f"https://ipgrest.asanpardakht.ir/v1/TranResult"
+        params = {
+            'merchantConfigurationId': self._merchant_configuration_id,
+            'localInvoiceId': invoice_id
+        }
+        headers = {
+            'usr': self._username,
+            'pwd': self._password
+        }
+        
+        logger.debug(f"Getting transaction result for invoice: {invoice_id}")
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            logger.debug(f"TranResult response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.debug(f"TranResult response: {result}")
+                return result
+            else:
+                logger.error(f"TranResult failed: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.exception(f"Error calling TranResult API: {e}")
+            return None
+
     def _get_local_date(self):
+        """
+        Get current date/time in the exact format required by AsanPardakht
+        Format: YYYYMMDD HHMMSS (without quotes)
+        Example from official docs: 20250917 112849
+        """
         url = 'https://ipgrest.asanpardakht.ir/v1/Time'
         headers = {
             'usr': self._username,  
@@ -248,16 +331,25 @@ class AsanPardakht(BaseBank):
         }
 
         logger.debug(f"Getting server time from: {url}")
-        response = requests.get(url, headers=headers)
-
-        if response.status_code == 200:
-            server_time = response.text.strip()
-            # Remove quotes if they exist
-            if server_time.startswith('"') and server_time.endswith('"'):
-                server_time = server_time[1:-1]
-            logger.debug(f"Server time received: {server_time}")
-            return server_time
-        else:
-            error_msg = f"Failed to retrieve server time: {response.status_code}, {response.text}"
-            logger.error(error_msg)
-            raise Exception(error_msg)
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                server_time = response.text.strip()
+                # Remove quotes if they exist (API sometimes returns with quotes)
+                if server_time.startswith('"') and server_time.endswith('"'):
+                    server_time = server_time[1:-1]
+                logger.debug(f"Server time received: {server_time}")
+                return server_time
+            else:
+                error_msg = f"Failed to retrieve server time: {response.status_code}, {response.text}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+                
+        except Exception as e:
+            logger.error(f"Error getting server time: {e}")
+            # Fallback to local time in the correct format if server time fails
+            from datetime import datetime
+            local_time = datetime.now().strftime('%Y%m%d %H%M%S')
+            logger.warning(f"Using local time as fallback: {local_time}")
+            return local_time
