@@ -154,7 +154,9 @@ class AsanPardakht(BaseBank):
 
     def _get_gateway_payment_url_parameter(self):
         # AsanPardakht uses https://asan.shaparak.ir for payment processing
-        return "https://asan.shaparak.ir"
+        # If you get errors, try the alternative URL below:
+        # return "https://ipay.asanpardakht.ir/"
+        return "https://asan.shaparak.ir/"
 
     def _get_gateway_payment_method_parameter(self):
         # AsanPardakht requires POST method according to official examples
@@ -168,8 +170,12 @@ class AsanPardakht(BaseBank):
         mobile_number = getattr(self, 'mobile_number', None)
         if mobile_number:
             params["mobileap"] = mobile_number
+        else:
+            # Add empty mobile parameter as per some implementations
+            params["mobileap"] = ""
         
         logger.debug(f"Payment parameters: {params}")
+        logger.info(f"Final redirect will be POST to https://asan.shaparak.ir/ with RefId: {self.get_reference_number()}")
         return params
 
     def prepare_verify_from_gateway(self):
