@@ -200,6 +200,8 @@ class AsanPardakht(BaseBank):
                     bank_type=self.get_bank_type()
                 )
                 logger.debug(f"Found bank record with tracking code: {invoice_id}")
+                # Set the tracking code so it's available for callback URL generation
+                self._set_tracking_code(self._bank.tracking_code)
             except Bank.DoesNotExist:
                 logger.error(f"Bank record not found for invoice ID: {invoice_id}")
                 # Create a minimal bank record to avoid crashes
@@ -210,6 +212,8 @@ class AsanPardakht(BaseBank):
                     status=PaymentStatus.ERROR,
                     amount=0
                 )
+                # Set the tracking code for this case too
+                self._set_tracking_code(invoice_id)
                 return
             
             # Call TranResult API to get transaction details
