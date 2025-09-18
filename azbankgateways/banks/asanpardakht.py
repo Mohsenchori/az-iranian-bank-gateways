@@ -191,8 +191,27 @@ class AsanPardakht(BaseBank):
         
         if invoice_id:
             logger.debug(f"Received callback with invoice ID: {invoice_id}")
-            # Set bank record first to avoid NoneType errors
-            self._set_bank_record()
+            
+            # Find bank record by tracking code (invoice_id should match tracking_code)
+            try:
+                from azbankgateways.models import Bank
+                self._bank = Bank.objects.get(
+                    tracking_code=invoice_id,
+                    bank_type=self.get_bank_type()
+                )
+                logger.debug(f"Found bank record with tracking code: {invoice_id}")
+            except Bank.DoesNotExist:
+                logger.error(f"Bank record not found for invoice ID: {invoice_id}")
+                # Create a minimal bank record to avoid crashes
+                from azbankgateways.models import Bank, PaymentStatus
+                self._bank = Bank.objects.create(
+                    tracking_code=invoice_id,
+                    bank_type=self.get_bank_type(),
+                    status=PaymentStatus.ERROR,
+                    amount=0
+                )
+                return
+            
             # Call TranResult API to get transaction details
             try:
                 tran_result = self._get_transaction_result(invoice_id)
@@ -222,8 +241,13 @@ class AsanPardakht(BaseBank):
             logger.debug(f"Fallback: Received callback - RefId: {ref_id}, ResCode: {res_code}")
             self._set_reference_number(ref_id)
             self._set_bank_record()
+            if self._bank is None:
+                logger.error("Could not find bank record in fallback method")
+                return
+                
             if res_code == "0":
                 logger.info("Payment successful - ResCode is 0")
+                self._set_payment_status(PaymentStatus.COMPLETE)
                 self._bank.extra_information = f"ResCode={res_code}, RefId={ref_id}"
                 self._bank.save()
             else:
