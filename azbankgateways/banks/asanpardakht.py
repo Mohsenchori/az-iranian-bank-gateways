@@ -225,7 +225,7 @@ class AsanPardakht(BaseBank):
                     
                     # Check if transaction was successful
                     if tran_result.get('respCode') == '0' or tran_result.get('resCode') == '0':
-                        logger.info("Payment successful according to TranResult")
+                        logger.info("+++++++Payment successful according to TranResult")
                         self._set_payment_status(PaymentStatus.COMPLETE)
                         self._bank.extra_information = f"TranResult={tran_result}"
                         self._bank.save()
