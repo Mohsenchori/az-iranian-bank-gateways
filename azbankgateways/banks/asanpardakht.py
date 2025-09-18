@@ -224,13 +224,15 @@ class AsanPardakht(BaseBank):
                     logger.info(f"Transaction result: {tran_result}")
                     
                     # Check if transaction was successful
-                    if tran_result.get('respCode') == '0' or tran_result.get('resCode') == '0':
-                        logger.info("+++++++Payment successful according to TranResult")
+                    # AsanPardakht TranResult API uses serviceStatusCode: '1' for successful payments
+                    service_status = tran_result.get('serviceStatusCode')
+                    if service_status == '1':
+                        logger.info("+++++++Payment successful according to TranResult - serviceStatusCode: 1")
                         self._set_payment_status(PaymentStatus.COMPLETE)
                         self._bank.extra_information = f"TranResult={tran_result}"
                         self._bank.save()
                     else:
-                        logger.error(f"Payment failed according to TranResult: {tran_result}")
+                        logger.error(f"Payment failed according to TranResult - serviceStatusCode: {service_status}")
                         self._set_payment_status(PaymentStatus.CANCEL_BY_USER)
                 else:
                     logger.error("Failed to get transaction result")
