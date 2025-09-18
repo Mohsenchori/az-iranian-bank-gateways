@@ -191,6 +191,8 @@ class AsanPardakht(BaseBank):
         
         if invoice_id:
             logger.debug(f"Received callback with invoice ID: {invoice_id}")
+            # Set bank record first to avoid NoneType errors
+            self._set_bank_record()
             # Call TranResult API to get transaction details
             try:
                 tran_result = self._get_transaction_result(invoice_id)
@@ -201,6 +203,7 @@ class AsanPardakht(BaseBank):
                     # Check if transaction was successful
                     if tran_result.get('respCode') == '0' or tran_result.get('resCode') == '0':
                         logger.info("Payment successful according to TranResult")
+                        self._set_payment_status(PaymentStatus.COMPLETE)
                         self._bank.extra_information = f"TranResult={tran_result}"
                         self._bank.save()
                     else:
