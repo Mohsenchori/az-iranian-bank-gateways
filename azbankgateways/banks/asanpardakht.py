@@ -203,7 +203,7 @@ class AsanPardakht(BaseBank):
             except Bank.DoesNotExist:
                 logger.error(f"Bank record not found for invoice ID: {invoice_id}")
                 # Create a minimal bank record to avoid crashes
-                from azbankgateways.models import Bank, PaymentStatus
+                from azbankgateways.models import Bank
                 self._bank = Bank.objects.create(
                     tracking_code=invoice_id,
                     bank_type=self.get_bank_type(),
