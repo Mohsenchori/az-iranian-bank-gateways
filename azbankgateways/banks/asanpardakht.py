@@ -298,7 +298,7 @@ class AsanPardakht(BaseBank):
                     logger.debug(f"Extracted PayGateTranID: {pay_gate_tran_id}")
                     
                     # IMPORTANT: Must verify first before settlement (AsanPardakht requirement)
-                    verify_success = self._verify_transaction()
+                    verify_success = self._verify_transaction_with_id(pay_gate_tran_id)
                     if verify_success:
                         # Now settle after verification
                         settlement_data = {'payGateTranID': pay_gate_tran_id}
@@ -522,6 +522,56 @@ class AsanPardakht(BaseBank):
                 
         except Exception as e:
             logger.exception(f"Error calling Verify API: {e}")
+            return False
+
+    def _verify_transaction_with_id(self, transaction_id):
+        """
+        Call AsanPardakht Verify API to verify a specific transaction ID before settlement
+        This is required by AsanPardakht before calling Settlement API
+        """
+        url = 'https://ipgrest.asanpardakht.ir/v1/Verify'
+        
+        # Validate the transaction ID is numeric
+        try:
+            transaction_id = int(transaction_id)
+        except (ValueError, TypeError):
+            logger.error(f"Invalid transaction ID for verification: {transaction_id} (not numeric)")
+            return False
+        
+        data = {
+            'merchantConfigurationId': int(self._merchant_configuration_id),
+            'payGateTranId': transaction_id
+        }
+        headers = {
+            'usr': self._username,
+            'pwd': self._password,
+            'Content-Type': 'application/json'
+        }
+        
+        logger.debug(f"Verifying specific transaction: {transaction_id}")
+        logger.debug(f"Verify request data: {data}")
+        
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=10)
+            logger.debug(f"Verify response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.debug(f"Verify response: {result}")
+                
+                # Check if verification was successful
+                if result.get('IsSuccess') == True:
+                    logger.info(f"Transaction {transaction_id} verification successful")
+                    return True
+                else:
+                    logger.error(f"Transaction {transaction_id} verification failed: {result}")
+                    return False
+            else:
+                logger.error(f"Verify request failed: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.exception(f"Error calling Verify API for transaction {transaction_id}: {e}")
             return False
 
     def _settle_payment(self, tran_result):
