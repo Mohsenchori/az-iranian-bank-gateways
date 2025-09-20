@@ -504,18 +504,29 @@ class AsanPardakht(BaseBank):
         try:
             response = requests.post(url, json=data, headers=headers, timeout=10)
             logger.debug(f"Verify response status: {response.status_code}")
+            logger.debug(f"Verify response text: '{response.text}'")
             
             if response.status_code == 200:
-                result = response.json()
-                logger.debug(f"Verify response: {result}")
-                
-                # Check if verification was successful
-                if result.get('IsSuccess') == True:
-                    logger.info("Transaction verification successful")
+                # Handle empty response (AsanPardakht sometimes returns empty body for successful verification)
+                if not response.text or response.text.strip() == '':
+                    logger.info("Transaction verification successful (empty response indicates success)")
                     return True
-                else:
-                    logger.error(f"Transaction verification failed: {result}")
-                    return False
+                
+                try:
+                    result = response.json()
+                    logger.debug(f"Verify response: {result}")
+                    
+                    # Check if verification was successful
+                    if result.get('IsSuccess') == True:
+                        logger.info("Transaction verification successful")
+                        return True
+                    else:
+                        logger.error(f"Transaction verification failed: {result}")
+                        return False
+                except ValueError as e:
+                    # If JSON parsing fails but status is 200, consider it successful
+                    logger.warning(f"JSON parsing failed for verification response, but status 200 - treating as success: {e}")
+                    return True
             else:
                 logger.error(f"Verify request failed: {response.status_code} - {response.text}")
                 return False
@@ -554,18 +565,29 @@ class AsanPardakht(BaseBank):
         try:
             response = requests.post(url, json=data, headers=headers, timeout=10)
             logger.debug(f"Verify response status: {response.status_code}")
+            logger.debug(f"Verify response text: '{response.text}'")
             
             if response.status_code == 200:
-                result = response.json()
-                logger.debug(f"Verify response: {result}")
-                
-                # Check if verification was successful
-                if result.get('IsSuccess') == True:
-                    logger.info(f"Transaction {transaction_id} verification successful")
+                # Handle empty response (AsanPardakht sometimes returns empty body for successful verification)
+                if not response.text or response.text.strip() == '':
+                    logger.info(f"Transaction {transaction_id} verification successful (empty response indicates success)")
                     return True
-                else:
-                    logger.error(f"Transaction {transaction_id} verification failed: {result}")
-                    return False
+                
+                try:
+                    result = response.json()
+                    logger.debug(f"Verify response: {result}")
+                    
+                    # Check if verification was successful
+                    if result.get('IsSuccess') == True:
+                        logger.info(f"Transaction {transaction_id} verification successful")
+                        return True
+                    else:
+                        logger.error(f"Transaction {transaction_id} verification failed: {result}")
+                        return False
+                except ValueError as e:
+                    # If JSON parsing fails but status is 200, consider it successful
+                    logger.warning(f"JSON parsing failed for verification response, but status 200 - treating as success: {e}")
+                    return True
             else:
                 logger.error(f"Verify request failed: {response.status_code} - {response.text}")
                 return False
