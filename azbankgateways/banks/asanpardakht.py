@@ -240,9 +240,15 @@ class AsanPardakht(BaseBank):
                     self._set_reference_number(tran_result['payGateTranID'])
                     logger.info(f"Transaction result: {tran_result}")
                     
+                    # Debug: Print all keys in the response
+                    print(f"=== TRANSRESULT KEYS: {list(tran_result.keys())} ===")
+                    logger.info(f"=== TRANSRESULT KEYS: {list(tran_result.keys())} ===")
+                    
                     # Extract and log card number if available
                     card_number = tran_result.get('cardNumber')
-                    if card_number:
+                    print(f"=== CARD NUMBER VALUE: '{card_number}' (type: {type(card_number)}) ===")
+                    
+                    if card_number and card_number != "string" and card_number.strip():
                         print(f"=== CARD NUMBER FROM TRANSRESULT: {card_number} ===")
                         logger.info(f"Card Number: {card_number}")
                         # Save card number to bank record
@@ -251,6 +257,9 @@ class AsanPardakht(BaseBank):
                             self._bank.extra_information += f", {card_info}"
                         else:
                             self._bank.extra_information = card_info
+                    else:
+                        print(f"=== NO VALID CARD NUMBER FOUND - Value was: '{card_number}' ===")
+                        logger.warning(f"No valid card number found in TranResult - Value was: '{card_number}'")
                     
                     # Check if transaction was successful
                     # AsanPardakht TranResult API uses serviceStatusCode: '1' for successful payments
@@ -444,11 +453,17 @@ class AsanPardakht(BaseBank):
                 result = response.json()
                 logger.debug(f"TranResult response: {result}")
                 
+                # Debug: Print all response data
+                print(f"=== FULL TRANSRESULT RESPONSE: {result} ===")
+                
                 # Extract and log card number from TranResult
                 if 'cardNumber' in result:
                     card_number = result['cardNumber']
-                    print(f"=== CARD NUMBER FROM TRANSRESULT API: {card_number} ===")
+                    print(f"=== CARD NUMBER FROM TRANSRESULT API: '{card_number}' (type: {type(card_number)}) ===")
                     logger.info(f"Card Number extracted from TranResult: {card_number}")
+                else:
+                    print(f"=== NO 'cardNumber' KEY IN TRANSRESULT RESPONSE ===")
+                    logger.warning("No 'cardNumber' key found in TranResult response")
                 
                 return result
             else:
