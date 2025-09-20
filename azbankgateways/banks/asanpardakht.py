@@ -231,6 +231,14 @@ class AsanPardakht(BaseBank):
                         self._set_payment_status(PaymentStatus.COMPLETE)
                         self._bank.extra_information = f"TranResult={tran_result}"
                         self._bank.save()
+                        
+                        # IMPORTANT: Call settlement API to finalize the transaction
+                        # Without this, the money will be returned to user after ~1 hour
+                        settlement_result = self._settle_payment(tran_result)
+                        if settlement_result:
+                            logger.info("Payment successfully settled with AsanPardakht")
+                        else:
+                            logger.warning("Settlement failed - transaction may be reversed automatically")
                     else:
                         logger.error(f"Payment failed according to TranResult - serviceStatusCode: {service_status}")
                         self._set_payment_status(PaymentStatus.CANCEL_BY_USER)
@@ -292,6 +300,13 @@ class AsanPardakht(BaseBank):
         response_json = self._send_request(self._verify_api_url, data, headers)
         if response_json.get("IsSuccess"):
             self._set_payment_status(PaymentStatus.COMPLETE)
+            
+            # IMPORTANT: Call settlement API to finalize the transaction
+            settlement_result = self._settle_payment_by_verify(response_json)
+            if settlement_result:
+                logger.info("Payment successfully settled via Verify API")
+            else:
+                logger.warning("Settlement failed via Verify API - transaction may be reversed")
         else:
             self._set_payment_status(PaymentStatus.CANCEL_BY_USER)
             logger.error("Asan Pardakht verification failed.")
@@ -402,3 +417,81 @@ class AsanPardakht(BaseBank):
             local_time = datetime.now().strftime('%Y%m%d %H%M%S')
             logger.warning(f"Using local time as fallback: {local_time}")
             return local_time
+
+    def _settle_payment(self, tran_result):
+        """
+        Call AsanPardakht Settlement API to finalize the transaction
+        This must be called after successful payment to prevent automatic reversal
+        """
+        url = 'https://ipgrest.asanpardakht.ir/v1/Settlement'
+        data = {
+            'merchantConfigurationId': self._merchant_configuration_id,
+            'payGateTranId': tran_result.get('payGateTranID'),
+            'localInvoiceId': tran_result.get('salesOrderID'),
+            'rrn': tran_result.get('rrn')
+        }
+        headers = {
+            'usr': self._username,
+            'pwd': self._password
+        }
+        
+        logger.debug(f"Settling payment for transaction: {tran_result.get('payGateTranID')}")
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=10)
+            logger.debug(f"Settlement response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.debug(f"Settlement response: {result}")
+                
+                # Check if settlement was successful
+                if result.get('result') == True or result.get('Result') == True:
+                    return True
+                else:
+                    logger.error(f"Settlement failed: {result}")
+                    return False
+            else:
+                logger.error(f"Settlement request failed: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.exception(f"Error calling Settlement API: {e}")
+            return False
+
+    def _settle_payment_by_verify(self, verify_response):
+        """
+        Call AsanPardakht Settlement API using data from Verify response
+        """
+        url = 'https://ipgrest.asanpardakht.ir/v1/Settlement'
+        data = {
+            'merchantConfigurationId': self._merchant_configuration_id,
+            'payGateTranId': self.get_reference_number(),
+            'localInvoiceId': self.get_tracking_code()
+        }
+        headers = {
+            'usr': self._username,
+            'pwd': self._password
+        }
+        
+        logger.debug(f"Settling payment via verify for transaction: {self.get_reference_number()}")
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=10)
+            logger.debug(f"Settlement response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.debug(f"Settlement response: {result}")
+                
+                # Check if settlement was successful
+                if result.get('result') == True or result.get('Result') == True:
+                    return True
+                else:
+                    logger.error(f"Settlement failed: {result}")
+                    return False
+            else:
+                logger.error(f"Settlement request failed: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.exception(f"Error calling Settlement API: {e}")
+            return False
