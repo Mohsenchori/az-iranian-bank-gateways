@@ -623,18 +623,29 @@ class AsanPardakht(BaseBank):
         try:
             response = requests.post(url, json=data, headers=headers, timeout=10)
             logger.debug(f"Settlement response status: {response.status_code}")
+            logger.debug(f"Settlement response text: '{response.text}'")
             
             if response.status_code == 200:
-                result = response.json()
-                logger.debug(f"Settlement response: {result}")
-                
-                # Check if settlement was successful
-                if result.get('result') == True or result.get('Result') == True or result.get('IsSuccess') == True:
-                    logger.info("Settlement successful")
+                # Handle empty response (AsanPardakht sometimes returns empty body for successful settlement)
+                if not response.text or response.text.strip() == '':
+                    logger.info("Settlement successful (empty response indicates success)")
                     return True
-                else:
-                    logger.error(f"Settlement failed: {result}")
-                    return False
+                
+                try:
+                    result = response.json()
+                    logger.debug(f"Settlement response: {result}")
+                    
+                    # Check if settlement was successful
+                    if result.get('result') == True or result.get('Result') == True or result.get('IsSuccess') == True:
+                        logger.info("Settlement successful")
+                        return True
+                    else:
+                        logger.error(f"Settlement failed: {result}")
+                        return False
+                except ValueError as e:
+                    # If JSON parsing fails but status is 200, consider it successful
+                    logger.warning(f"JSON parsing failed for settlement response, but status 200 - treating as success: {e}")
+                    return True
             else:
                 logger.error(f"Settlement request failed: {response.status_code} - {response.text}")
                 return False
@@ -675,18 +686,29 @@ class AsanPardakht(BaseBank):
         try:
             response = requests.post(url, json=data, headers=headers, timeout=10)
             logger.debug(f"Settlement response status: {response.status_code}")
+            logger.debug(f"Settlement response text: '{response.text}'")
             
             if response.status_code == 200:
-                result = response.json()
-                logger.debug(f"Settlement response: {result}")
-                
-                # Check if settlement was successful
-                if result.get('result') == True or result.get('Result') == True or result.get('IsSuccess') == True:
-                    logger.info("Fallback settlement successful")
+                # Handle empty response (AsanPardakht sometimes returns empty body for successful settlement)
+                if not response.text or response.text.strip() == '':
+                    logger.info("Fallback settlement successful (empty response indicates success)")
                     return True
-                else:
-                    logger.error(f"Fallback settlement failed: {result}")
-                    return False
+                
+                try:
+                    result = response.json()
+                    logger.debug(f"Settlement response: {result}")
+                    
+                    # Check if settlement was successful
+                    if result.get('result') == True or result.get('Result') == True or result.get('IsSuccess') == True:
+                        logger.info("Fallback settlement successful")
+                        return True
+                    else:
+                        logger.error(f"Fallback settlement failed: {result}")
+                        return False
+                except ValueError as e:
+                    # If JSON parsing fails but status is 200, consider it successful
+                    logger.warning(f"JSON parsing failed for fallback settlement response, but status 200 - treating as success: {e}")
+                    return True
             else:
                 logger.error(f"Fallback settlement request failed: {response.status_code} - {response.text}")
                 return False
