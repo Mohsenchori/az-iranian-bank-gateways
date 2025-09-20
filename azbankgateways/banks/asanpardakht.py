@@ -240,13 +240,28 @@ class AsanPardakht(BaseBank):
                     self._set_reference_number(tran_result['payGateTranID'])
                     logger.info(f"Transaction result: {tran_result}")
                     
+                    # Extract and log card number if available
+                    card_number = tran_result.get('cardNumber')
+                    if card_number:
+                        print(f"=== CARD NUMBER FROM TRANSRESULT: {card_number} ===")
+                        logger.info(f"Card Number: {card_number}")
+                        # Save card number to bank record
+                        card_info = f"CardNumber={card_number}"
+                        if self._bank.extra_information:
+                            self._bank.extra_information += f", {card_info}"
+                        else:
+                            self._bank.extra_information = card_info
+                    
                     # Check if transaction was successful
                     # AsanPardakht TranResult API uses serviceStatusCode: '1' for successful payments
                     service_status = tran_result.get('serviceStatusCode')
                     if service_status == '1':
                         logger.info("+++++++Payment successful according to TranResult - serviceStatusCode: 1")
                         # Don't set payment status here - let base class handle state transitions
-                        self._bank.extra_information = f"TranResult={tran_result}"
+                        if not self._bank.extra_information:
+                            self._bank.extra_information = f"TranResult={tran_result}"
+                        else:
+                            self._bank.extra_information += f", TranResult={tran_result}"
                         self._bank.save()
                         
                         # Store settlement data for later use
@@ -428,6 +443,13 @@ class AsanPardakht(BaseBank):
             if response.status_code == 200:
                 result = response.json()
                 logger.debug(f"TranResult response: {result}")
+                
+                # Extract and log card number from TranResult
+                if 'cardNumber' in result:
+                    card_number = result['cardNumber']
+                    print(f"=== CARD NUMBER FROM TRANSRESULT API: {card_number} ===")
+                    logger.info(f"Card Number extracted from TranResult: {card_number}")
+                
                 return result
             else:
                 logger.error(f"TranResult failed: {response.status_code} - {response.text}")
