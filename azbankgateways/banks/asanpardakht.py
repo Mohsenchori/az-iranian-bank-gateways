@@ -228,7 +228,28 @@ class AsanPardakht(BaseBank):
             if pay_gate_tran_id:
                 logger.info(f"Using PayGateTranID from callback: {pay_gate_tran_id}")
                 self._set_reference_number(pay_gate_tran_id)
-                self._bank.extra_information = f"PayGateTranID={pay_gate_tran_id}"
+                
+                # Try to get card number from TranResult API even when we have PayGateTranID
+                print(f"=== ATTEMPTING TO GET CARD NUMBER FOR PAYGATETRANID: {pay_gate_tran_id} ===")
+                try:
+                    tran_result = self._get_transaction_result(invoice_id)
+                    if tran_result:
+                        print(f"=== TRANSRESULT FOR PAYGATETRANID: {tran_result} ===")
+                        card_number = tran_result.get('cardNumber')
+                        if card_number and card_number != "string" and card_number.strip():
+                            print(f"=== CARD NUMBER FROM PAYGATETRANID PATH: {card_number} ===")
+                            logger.info(f"Card Number from PayGateTranID path: {card_number}")
+                            self._bank.extra_information = f"PayGateTranID={pay_gate_tran_id}, CardNumber={card_number}"
+                        else:
+                            print(f"=== NO CARD NUMBER IN PAYGATETRANID PATH - Value: '{card_number}' ===")
+                            self._bank.extra_information = f"PayGateTranID={pay_gate_tran_id}"
+                    else:
+                        print(f"=== NO TRANSRESULT FOR PAYGATETRANID PATH ===")
+                        self._bank.extra_information = f"PayGateTranID={pay_gate_tran_id}"
+                except Exception as e:
+                    print(f"=== ERROR GETTING CARD NUMBER FOR PAYGATETRANID: {e} ===")
+                    self._bank.extra_information = f"PayGateTranID={pay_gate_tran_id}"
+                
                 self._bank.save()
                 self._payment_verified = True
                 return
