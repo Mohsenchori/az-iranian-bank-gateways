@@ -289,20 +289,28 @@ class AsanPardakht(BaseBank):
             logger.info("Setting final payment status to COMPLETE and settling")
             self._set_payment_status(PaymentStatus.COMPLETE)
             
-            # Check if we have PayGateTranID directly from callback (skip verification)
+            # Check if we have PayGateTranID directly from callback
             if hasattr(self._bank, 'extra_information') and self._bank.extra_information and 'PayGateTranID=' in self._bank.extra_information:
-                logger.info("Using PayGateTranID from callback, skipping verification and proceeding to settlement")
-                # Extract PayGateTranID from extra_information for settlement
+                logger.info("Using PayGateTranID from callback, calling verify then settlement")
+                # Extract PayGateTranID from extra_information
                 try:
                     pay_gate_tran_id = self._bank.extra_information.split('PayGateTranID=')[1]
-                    settlement_data = {'payGateTranID': pay_gate_tran_id}
-                    settlement_result = self._settle_payment(settlement_data)
-                    if settlement_result:
-                        logger.info("Payment successfully settled with PayGateTranID from callback")
+                    logger.debug(f"Extracted PayGateTranID: {pay_gate_tran_id}")
+                    
+                    # IMPORTANT: Must verify first before settlement (AsanPardakht requirement)
+                    verify_success = self._verify_transaction()
+                    if verify_success:
+                        # Now settle after verification
+                        settlement_data = {'payGateTranID': pay_gate_tran_id}
+                        settlement_result = self._settle_payment(settlement_data)
+                        if settlement_result:
+                            logger.info("Payment successfully verified and settled with PayGateTranID from callback")
+                        else:
+                            logger.warning("Settlement failed with PayGateTranID from callback after verification")
                     else:
-                        logger.warning("Settlement failed with PayGateTranID from callback")
+                        logger.error("Verification failed for PayGateTranID from callback")
                 except Exception as e:
-                    logger.error(f"Error extracting PayGateTranID for settlement: {e}")
+                    logger.error(f"Error processing PayGateTranID for verification and settlement: {e}")
                 return
             
             # IMPORTANT: Must call Verify API before Settlement API (AsanPardakht requirement)
