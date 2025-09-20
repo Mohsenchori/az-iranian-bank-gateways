@@ -443,74 +443,88 @@ class AsanPardakht(BaseBank):
         Call AsanPardakht Settlement API to finalize the transaction
         This must be called after successful payment to prevent automatic reversal
         
-        Note: AsanPardakht may not have a separate Settlement API endpoint.
-        Many Iranian gateways auto-settle after verification.
+        Official API: POST https://ipgrest.asanpardakht.ir/v1/Settlement
+        Body: {"merchantConfigurationId": 0, "payGateTranId": 0}
         """
-        # Try different possible settlement endpoints
-        settlement_urls = [
-            'https://ipgrest.asanpardakht.ir/v1/Settle',
-            'https://ipgrest.asanpardakht.ir/v1/Settlement',
-            'https://ipgrest.asanpardakht.ir/v1/Confirm'
-        ]
+        url = 'https://ipgrest.asanpardakht.ir/v1/Settlement'
         
+        # Use the exact API specification - only merchantConfigurationId and payGateTranId
         data = {
-            'merchantConfigurationId': self._merchant_configuration_id,
-            'payGateTranId': tran_result.get('payGateTranID'),
-            'localInvoiceId': tran_result.get('salesOrderID'),
-            'rrn': tran_result.get('rrn')
+            'merchantConfigurationId': int(self._merchant_configuration_id),
+            'payGateTranId': int(tran_result.get('payGateTranID'))
         }
         headers = {
             'usr': self._username,
-            'pwd': self._password
+            'pwd': self._password,
+            'Content-Type': 'application/json'
         }
         
-        logger.debug(f"Attempting to settle payment for transaction: {tran_result.get('payGateTranID')}")
+        logger.debug(f"Settling payment for transaction: {tran_result.get('payGateTranID')}")
+        logger.debug(f"Settlement request data: {data}")
         
-        for url in settlement_urls:
-            try:
-                logger.debug(f"Trying settlement URL: {url}")
-                response = requests.post(url, json=data, headers=headers, timeout=10)
-                logger.debug(f"Settlement response status for {url}: {response.status_code}")
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=10)
+            logger.debug(f"Settlement response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.debug(f"Settlement response: {result}")
                 
-                if response.status_code == 200:
-                    result = response.json()
-                    logger.debug(f"Settlement response: {result}")
-                    
-                    # Check if settlement was successful
-                    if result.get('result') == True or result.get('Result') == True or result.get('IsSuccess') == True:
-                        logger.info(f"Settlement successful using {url}")
-                        return True
-                    else:
-                        logger.warning(f"Settlement failed with {url}: {result}")
-                        continue
-                elif response.status_code == 404:
-                    logger.debug(f"Settlement endpoint {url} not found (404)")
-                    continue
-                elif response.status_code == 507:
-                    logger.warning(f"Settlement endpoint {url} returned storage error (507)")
-                    continue
+                # Check if settlement was successful
+                if result.get('result') == True or result.get('Result') == True or result.get('IsSuccess') == True:
+                    logger.info("Settlement successful")
+                    return True
                 else:
-                    logger.warning(f"Settlement request failed for {url}: {response.status_code} - {response.text}")
-                    continue
-                    
-            except Exception as e:
-                logger.warning(f"Error calling Settlement API {url}: {e}")
-                continue
-        
-        # If all settlement attempts failed, log warning but don't fail the transaction
-        logger.warning("All settlement endpoints failed. AsanPardakht may auto-settle or require manual settlement.")
-        
-        # For AsanPardakht, successful verification often means auto-settlement
-        # Return True to indicate transaction is complete
-        return True
+                    logger.error(f"Settlement failed: {result}")
+                    return False
+            else:
+                logger.error(f"Settlement request failed: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.exception(f"Error calling Settlement API: {e}")
+            return False
 
     def _settle_payment_fallback(self):
         """
         Fallback settlement method when we don't have full TranResult data
+        Uses the reference number from the current transaction
         """
-        logger.debug(f"Attempting fallback settlement for transaction: {self.get_reference_number()}")
+        url = 'https://ipgrest.asanpardakht.ir/v1/Settlement'
         
-        # For standard verify flow, AsanPardakht typically auto-settles
-        # No additional settlement call needed
-        logger.info("Using fallback settlement - AsanPardakht typically auto-settles after successful verification")
-        return True
+        # Use the exact API specification - only merchantConfigurationId and payGateTranId
+        data = {
+            'merchantConfigurationId': int(self._merchant_configuration_id),
+            'payGateTranId': int(self.get_reference_number())
+        }
+        headers = {
+            'usr': self._username,
+            'pwd': self._password,
+            'Content-Type': 'application/json'
+        }
+        
+        logger.debug(f"Fallback settling payment for transaction: {self.get_reference_number()}")
+        logger.debug(f"Settlement request data: {data}")
+        
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=10)
+            logger.debug(f"Settlement response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.debug(f"Settlement response: {result}")
+                
+                # Check if settlement was successful
+                if result.get('result') == True or result.get('Result') == True or result.get('IsSuccess') == True:
+                    logger.info("Fallback settlement successful")
+                    return True
+                else:
+                    logger.error(f"Fallback settlement failed: {result}")
+                    return False
+            else:
+                logger.error(f"Fallback settlement request failed: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.exception(f"Error calling fallback Settlement API: {e}")
+            return False
