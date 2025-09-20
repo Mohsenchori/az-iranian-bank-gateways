@@ -289,6 +289,22 @@ class AsanPardakht(BaseBank):
             logger.info("Setting final payment status to COMPLETE and settling")
             self._set_payment_status(PaymentStatus.COMPLETE)
             
+            # Check if we have PayGateTranID directly from callback (skip verification)
+            if hasattr(self._bank, 'extra_information') and self._bank.extra_information and 'PayGateTranID=' in self._bank.extra_information:
+                logger.info("Using PayGateTranID from callback, skipping verification and proceeding to settlement")
+                # Extract PayGateTranID from extra_information for settlement
+                try:
+                    pay_gate_tran_id = self._bank.extra_information.split('PayGateTranID=')[1]
+                    settlement_data = {'payGateTranID': pay_gate_tran_id}
+                    settlement_result = self._settle_payment(settlement_data)
+                    if settlement_result:
+                        logger.info("Payment successfully settled with PayGateTranID from callback")
+                    else:
+                        logger.warning("Settlement failed with PayGateTranID from callback")
+                except Exception as e:
+                    logger.error(f"Error extracting PayGateTranID for settlement: {e}")
+                return
+            
             # IMPORTANT: Must call Verify API before Settlement API (AsanPardakht requirement)
             verify_success = self._verify_transaction()
             if verify_success:
@@ -323,8 +339,8 @@ class AsanPardakht(BaseBank):
         
         # If we already processed the payment via TranResult API in prepare_verify_from_gateway,
         # skip the standard verification to avoid overriding the correct status
-        if hasattr(self._bank, 'extra_information') and self._bank.extra_information and 'TranResult=' in self._bank.extra_information:
-            logger.info("Payment already verified via TranResult API, skipping standard verification")
+        if hasattr(self._bank, 'extra_information') and self._bank.extra_information and ('TranResult=' in self._bank.extra_information or 'PayGateTranID=' in self._bank.extra_information):
+            logger.info("Payment already verified via TranResult API or callback data, skipping standard verification")
             return
             
         # Standard verification using AsanPardakht Verify API (fallback)
