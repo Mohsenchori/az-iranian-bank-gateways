@@ -194,6 +194,9 @@ class AsanPardakht(BaseBank):
         # We need to call TranResult API to get the actual transaction details
         invoice_id = request.GET.get("invoice") or request.POST.get("invoice")
         
+        # Check if we have PayGateTranID in POST data (direct callback from AsanPardakht)
+        pay_gate_tran_id = request.POST.get("PayGateTranID")
+        
         if invoice_id:
             logger.debug(f"Received callback with invoice ID: {invoice_id}")
             
@@ -219,6 +222,15 @@ class AsanPardakht(BaseBank):
                 )
                 # Set the tracking code for this case too
                 self._set_tracking_code(invoice_id)
+                return
+            
+            # If we have PayGateTranID from callback, use it directly
+            if pay_gate_tran_id:
+                logger.info(f"Using PayGateTranID from callback: {pay_gate_tran_id}")
+                self._set_reference_number(pay_gate_tran_id)
+                self._bank.extra_information = f"PayGateTranID={pay_gate_tran_id}"
+                self._bank.save()
+                self._payment_verified = True
                 return
             
             # Call TranResult API to get transaction details
@@ -444,9 +456,17 @@ class AsanPardakht(BaseBank):
         """
         url = 'https://ipgrest.asanpardakht.ir/v1/Verify'
         
+        # Get reference number and validate it's a numeric transaction ID
+        ref_number = self.get_reference_number()
+        try:
+            transaction_id = int(ref_number)
+        except (ValueError, TypeError):
+            logger.error(f"Invalid transaction ID for verification: {ref_number} (not numeric)")
+            return False
+        
         data = {
             'merchantConfigurationId': int(self._merchant_configuration_id),
-            'payGateTranId': int(self.get_reference_number())
+            'payGateTranId': transaction_id
         }
         headers = {
             'usr': self._username,
@@ -454,7 +474,7 @@ class AsanPardakht(BaseBank):
             'Content-Type': 'application/json'
         }
         
-        logger.debug(f"Verifying transaction: {self.get_reference_number()}")
+        logger.debug(f"Verifying transaction: {transaction_id}")
         logger.debug(f"Verify request data: {data}")
         
         try:
@@ -534,10 +554,18 @@ class AsanPardakht(BaseBank):
         """
         url = 'https://ipgrest.asanpardakht.ir/v1/Settlement'
         
+        # Get reference number and validate it's a numeric transaction ID
+        ref_number = self.get_reference_number()
+        try:
+            transaction_id = int(ref_number)
+        except (ValueError, TypeError):
+            logger.error(f"Invalid transaction ID for settlement: {ref_number} (not numeric)")
+            return False
+        
         # Use the exact API specification - only merchantConfigurationId and payGateTranId
         data = {
             'merchantConfigurationId': int(self._merchant_configuration_id),
-            'payGateTranId': int(self.get_reference_number())
+            'payGateTranId': transaction_id
         }
         headers = {
             'usr': self._username,
@@ -545,7 +573,7 @@ class AsanPardakht(BaseBank):
             'Content-Type': 'application/json'
         }
         
-        logger.debug(f"Fallback settling payment for transaction: {self.get_reference_number()}")
+        logger.debug(f"Fallback settling payment for transaction: {transaction_id}")
         logger.debug(f"Settlement request data: {data}")
         
         try:
