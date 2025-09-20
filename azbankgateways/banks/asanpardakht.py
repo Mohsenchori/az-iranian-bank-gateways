@@ -275,6 +275,14 @@ class AsanPardakht(BaseBank):
 
     def verify(self, transaction_code):
         super(AsanPardakht, self).verify(transaction_code)
+        
+        # If we already processed the payment via TranResult API in prepare_verify_from_gateway,
+        # skip the standard verification to avoid overriding the correct status
+        if hasattr(self._bank, 'extra_information') and self._bank.extra_information and 'TranResult=' in self._bank.extra_information:
+            logger.info("Payment already verified via TranResult API, skipping standard verification")
+            return
+            
+        # Standard verification using AsanPardakht Verify API (fallback)
         data = self.get_verify_data()
         headers = {
 
