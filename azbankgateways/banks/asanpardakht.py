@@ -1,6 +1,8 @@
 import logging
 import requests
 from azbankgateways.banks import BaseBank
+from azbankgateways.models import Bank
+
 
 # Create a named logger for azbankgateways
 logger = logging.getLogger('azbankgateways.banks.asanpardakht')
@@ -66,27 +68,18 @@ class AsanPardakht(BaseBank):
             "paymentId": "0",  # According to official examples, this should be "0"
             "settlementPortions": []  # Required field from official Postman collection
         }
-        logger.debug(f"Enhanced callback URL: {enhanced_callback_url}")
         return data
 
-    def prepare_pay(self):
-        super(AsanPardakht, self).prepare_pay()
-
     def pay(self):
-        logger.info("AsanPardakht pay method called")
-        super(AsanPardakht, self).pay()
+        super(AsanPardakht, self).pay() # prepares the tracking code
         data = self.get_pay_data()
-        logger.debug(f"AsanPardakht pay data: {data}")
+        
         headers = {
-
             "usr": self._username,
             "pwd": self._password,
         }
 
-        logger.info(f"Sending token request to: {self._token_api_url}")
         token = self._send_request(self._token_api_url, data, headers, as_json=False)
-        print('||||||||||||||||||||||||||||||||||||||||',token)
-        logger.info(f"Received token: {token}")
         
         if token and token.strip():
             # Clean the token (remove any extra whitespace or quotes)
@@ -94,14 +87,10 @@ class AsanPardakht(BaseBank):
             if clean_token.startswith('"') and clean_token.endswith('"'):
                 clean_token = clean_token[1:-1]
             
-            self._set_reference_number(clean_token)
-            logger.info(f"Clean token set as reference number: {clean_token}")
+            self._set_reference_number(clean_token) # This is the token we will use later
             
-            # Log the final payment details
             payment_url = self._get_gateway_payment_url_parameter()
             payment_params = self._get_gateway_payment_parameter()
-            logger.info(f"Payment URL: {payment_url}")
-            logger.info(f"Payment parameters: {payment_params}")
         else:
             status_text = "Failed to retrieve token from Asan Pardakht"
             self._set_transaction_status_text(status_text)
@@ -158,76 +147,44 @@ class AsanPardakht(BaseBank):
         return status_codes.get(status, "Unknown error")
 
     def _get_gateway_payment_url_parameter(self):
-        # AsanPardakht official documentation specifies https://asan.shaparak.ir
-        # Note: The official docs don't include trailing slash
         return "https://asan.shaparak.ir"
 
-    def _get_gateway_payment_method_parameter(self):
-        # AsanPardakht requires POST method according to official examples
-        return "POST"
-
     def _get_gateway_payment_parameter(self):
-        # According to official C# example, AsanPardakht only needs RefId and mobileap
-        # The token parameter is NOT needed despite what support said
         token = self.get_reference_number()
         params = {
             "RefId": token,  # This is the token we received from the Token API
         }
+        
         # Add mobile number if available (optional parameter)
         mobile_number = getattr(self, 'mobile_number', None)
         if mobile_number:
             params["mobileap"] = mobile_number
         else:
             # Add empty mobile parameter as per official implementation
-            params["mobileap"] = "09016251030"
-        
-        logger.debug(f"Payment parameters: {params}")
-        logger.info(f"Final redirect will be POST to https://asan.shaparak.ir with RefId: {token}")
+            params["mobileap"] = ""
         return params
 
     def prepare_verify_from_gateway(self):
-        logger.info("AsanPardakht prepare_verify_from_gateway called")
         super(AsanPardakht, self).prepare_verify_from_gateway()
         request = self.get_request()
         
-        # Debug: Print all callback data to see what AsanPardakht sends
-        print(f"=== FULL CALLBACK GET DATA: {dict(request.GET)} ===")
-        print(f"=== FULL CALLBACK POST DATA: {dict(request.POST)} ===")
-        logger.info(f"Callback GET data: {dict(request.GET)}")
-        logger.info(f"Callback POST data: {dict(request.POST)}")
-        
-        # Check for card number in callback data
-        card_number_from_callback = request.POST.get("cardNumber") or request.GET.get("cardNumber")
-        if card_number_from_callback:
-            print(f"=== CARD NUMBER FROM CALLBACK: {card_number_from_callback} ===")
-            logger.info(f"Card number found in callback: {card_number_from_callback}")
-        else:
-            print(f"=== NO CARD NUMBER IN CALLBACK DATA ===")
-        
-        # AsanPardakht sends back the payment through callback URL with invoice parameter
-        # We need to call TranResult API to get the actual transaction details
         invoice_id = request.GET.get("invoice") or request.POST.get("invoice")
         
         # Check if we have PayGateTranID in POST data (direct callback from AsanPardakht)
         pay_gate_tran_id = request.POST.get("PayGateTranID")
         
-        if invoice_id:
-            logger.debug(f"Received callback with invoice ID: {invoice_id}")
-            
+        if invoice_id:            
             # Find bank record by tracking code (invoice_id should match tracking_code)
             try:
-                from azbankgateways.models import Bank
                 self._bank = Bank.objects.get(
                     tracking_code=invoice_id,
                     bank_type=self.get_bank_type()
                 )
-                logger.debug(f"Found bank record with tracking code: {invoice_id}")
                 # Set the tracking code so it's available for callback URL generation
                 self._set_tracking_code(self._bank.tracking_code)
             except Bank.DoesNotExist:
                 logger.error(f"Bank record not found for invoice ID: {invoice_id}")
                 # Create a minimal bank record to avoid crashes
-                from azbankgateways.models import Bank
                 self._bank = Bank.objects.create(
                     tracking_code=invoice_id,
                     bank_type=self.get_bank_type(),
@@ -240,7 +197,6 @@ class AsanPardakht(BaseBank):
             
             # If we have PayGateTranID from callback, use it directly
             if pay_gate_tran_id:
-                logger.info(f"Using PayGateTranID from callback: {pay_gate_tran_id}")
                 self._set_reference_number(pay_gate_tran_id)
                 
                 # Check if card number is available in callback data first
@@ -256,8 +212,6 @@ class AsanPardakht(BaseBank):
                     self._payment_verified = True
                     return
                 
-                # Try to get card number from TranResult API even when we have PayGateTranID
-                print(f"=== ATTEMPTING TO GET CARD NUMBER FOR PAYGATETRANID: {pay_gate_tran_id} ===")
                 try:
                     tran_result = self._get_transaction_result(invoice_id)
                     if tran_result:
@@ -437,30 +391,22 @@ class AsanPardakht(BaseBank):
             logger.error("Asan Pardakht verification failed.")
 
     def _send_request(self, api_url, data, headers, as_json=True):
-        logger.debug(f"Sending request to {api_url} with data: {data}")
         try:
             response = requests.post(api_url, json=data, headers=headers, timeout=10)
-            logger.debug(f"Response status code: {response.status_code}")
-            
             # Log response content for debugging
-            if response.status_code != 200:
-                logger.warning(f"Non-200 response: {response.status_code} - {response.text}")
-            
+            # if response.status_code != 200:
+            #     logger.warning(f"Non-200 response: {response.status_code} - {response.text}")            
             response.raise_for_status()
-            logger.debug(f"Request successful, status code: {response.status_code}")
         except requests.Timeout:
-            logger.exception(f"Asan Pardakht gateway timeout: {data}")
             raise BankGatewayConnectionError("AsanPardakht gateway timeout")
         except requests.ConnectionError:
-            logger.exception(f"Asan Pardakht gateway connection error: {data}")
             raise BankGatewayConnectionError("AsanPardakht gateway connection error")
         except requests.HTTPError as e:
             error_msg = f"HTTP error occurred: {e} - Response: {response.text if 'response' in locals() else 'No response'}"
-            logger.exception(error_msg)
-            
+
             # Handle specific server errors with more helpful messages
             if response.status_code == 507:
-                raise BankGatewayConnectionError("AsanPardakht server storage error (507). Please try again later.")
+                raise BankGatewayConnectionError("AsanPardakht server error, mismatch in parameters (507).")
             elif response.status_code >= 500:
                 raise BankGatewayConnectionError(f"AsanPardakht server error ({response.status_code}). Please try again later.")
             else:
@@ -468,18 +414,12 @@ class AsanPardakht(BaseBank):
 
         if as_json:
             response_json = get_json(response)
-            logger.debug(f"Response JSON: {response_json}")
             self._set_transaction_status_text(response_json.get("Message"))
             return response_json
         else:
-            logger.debug(f"Response text: {response.text}")
-            return response.text  
+            return response.text
 
     def _get_transaction_result(self, invoice_id):
-        """
-        Call AsanPardakht TranResult API to get transaction details
-        Based on official PHP example
-        """
         url = f"https://ipgrest.asanpardakht.ir/v1/TranResult"
         params = {
             'merchantConfigurationId': self._merchant_configuration_id,
@@ -490,49 +430,24 @@ class AsanPardakht(BaseBank):
             'pwd': self._password
         }
         
-        logger.debug(f"Getting transaction result for invoice: {invoice_id}")
         try:
             response = requests.get(url, params=params, headers=headers, timeout=10)
-            logger.debug(f"TranResult response status: {response.status_code}")
-            
+
             if response.status_code == 200:
                 result = response.json()
-                logger.debug(f"TranResult response: {result}")
-                
-                # Debug: Print all response data
-                print(f"=== FULL TRANSRESULT RESPONSE: {result} ===")
-                
-                # Extract and log card number from TranResult
-                if 'cardNumber' in result:
-                    card_number = result['cardNumber']
-                    print(f"=== CARD NUMBER FROM TRANSRESULT API: '{card_number}' (type: {type(card_number)}) ===")
-                    logger.info(f"Card Number extracted from TranResult: {card_number}")
-                else:
-                    print(f"=== NO 'cardNumber' KEY IN TRANSRESULT RESPONSE ===")
-                    logger.warning("No 'cardNumber' key found in TranResult response")
-                
                 return result
             else:
-                logger.error(f"TranResult failed: {response.status_code} - {response.text}")
-                return None
-                
+                return None               
         except Exception as e:
             logger.exception(f"Error calling TranResult API: {e}")
             return None
 
     def _get_local_date(self):
-        """
-        Get current date/time in the exact format required by AsanPardakht
-        Format: YYYYMMDD HHMMSS (without quotes)
-        Example from official docs: 20250917 112849
-        """
         url = 'https://ipgrest.asanpardakht.ir/v1/Time'
         headers = {
             'usr': self._username,  
             'pwd': self._password 
         }
-
-        logger.debug(f"Getting server time from: {url}")
         try:
             response = requests.get(url, headers=headers, timeout=10)
             
@@ -541,11 +456,9 @@ class AsanPardakht(BaseBank):
                 # Remove quotes if they exist (API sometimes returns with quotes)
                 if server_time.startswith('"') and server_time.endswith('"'):
                     server_time = server_time[1:-1]
-                logger.debug(f"Server time received: {server_time}")
                 return server_time
             else:
                 error_msg = f"Failed to retrieve server time: {response.status_code}, {response.text}"
-                logger.error(error_msg)
                 raise Exception(error_msg)
                 
         except Exception as e:
@@ -580,19 +493,12 @@ class AsanPardakht(BaseBank):
             'pwd': self._password,
             'Content-Type': 'application/json'
         }
-        
-        logger.debug(f"Verifying transaction: {transaction_id}")
-        logger.debug(f"Verify request data: {data}")
-        
         try:
             response = requests.post(url, json=data, headers=headers, timeout=10)
-            logger.debug(f"Verify response status: {response.status_code}")
-            logger.debug(f"Verify response text: '{response.text}'")
-            
+
             if response.status_code == 200:
                 # Handle empty response (AsanPardakht sometimes returns empty body for successful verification)
                 if not response.text or response.text.strip() == '':
-                    logger.info("Transaction verification successful (empty response indicates success)")
                     return True
                 
                 try:
@@ -601,7 +507,6 @@ class AsanPardakht(BaseBank):
                     
                     # Check if verification was successful
                     if result.get('IsSuccess') == True:
-                        logger.info("Transaction verification successful")
                         return True
                     else:
                         logger.error(f"Transaction verification failed: {result}")
@@ -613,7 +518,7 @@ class AsanPardakht(BaseBank):
             else:
                 logger.error(f"Verify request failed: {response.status_code} - {response.text}")
                 return False
-                
+                            
         except Exception as e:
             logger.exception(f"Error calling Verify API: {e}")
             return False
@@ -682,10 +587,8 @@ class AsanPardakht(BaseBank):
     def _settle_payment(self, tran_result):
         """
         Call AsanPardakht Settlement API to finalize the transaction
-        This must be called after successful payment to prevent automatic reversal
-        
-        Official API: POST https://ipgrest.asanpardakht.ir/v1/Settlement
-        Body: {"merchantConfigurationId": 0, "payGateTranId": 0}
+        This should be called after successful payment
+        if not called it will be called automatically after almost 3 hours
         """
         url = 'https://ipgrest.asanpardakht.ir/v1/Settlement'
         
@@ -700,9 +603,6 @@ class AsanPardakht(BaseBank):
             'Content-Type': 'application/json'
         }
         
-        logger.debug(f"Settling payment for transaction: {tran_result.get('payGateTranID')}")
-        logger.debug(f"Settlement request data: {data}")
-        
         try:
             response = requests.post(url, json=data, headers=headers, timeout=10)
             logger.debug(f"Settlement response status: {response.status_code}")
@@ -711,7 +611,6 @@ class AsanPardakht(BaseBank):
             if response.status_code == 200:
                 # Handle empty response (AsanPardakht sometimes returns empty body for successful settlement)
                 if not response.text or response.text.strip() == '':
-                    logger.info("Settlement successful (empty response indicates success)")
                     return True
                 
                 try:
@@ -720,7 +619,6 @@ class AsanPardakht(BaseBank):
                     
                     # Check if settlement was successful
                     if result.get('result') == True or result.get('Result') == True or result.get('IsSuccess') == True:
-                        logger.info("Settlement successful")
                         return True
                     else:
                         logger.error(f"Settlement failed: {result}")

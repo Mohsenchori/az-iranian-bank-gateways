@@ -2,7 +2,8 @@ import logging
 from urllib.parse import unquote
 
 from django.http import Http404
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 
 from azbankgateways.bankfactories import BankFactory
@@ -17,6 +18,20 @@ def callback_view(request):
     if not bank_type:
         logging.critical("Bank type is required. but it doesnt send.")
         raise Http404
+
+    if bank_type == "ASANPARDAKHT":
+        # Build the redirect URL with all query parameters
+        try:
+            custom_callback_url = reverse('asanpardakht_callback')
+            # Preserve all original query parameters
+            query_string = request.GET.urlencode()
+            if query_string:
+                custom_callback_url += f"?{query_string}"
+            return redirect(custom_callback_url)
+        except Exception as e:
+            logging.error(f"Failed to redirect to AsanPardakht callback: {e}")
+            # Fall back to default handling if redirect fails
+
 
     factory = BankFactory()
     bank = factory.create(bank_type, identifier=identifier)
