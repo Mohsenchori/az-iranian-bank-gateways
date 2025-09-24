@@ -390,6 +390,13 @@ class AsanPardakht(BaseBank):
             self._set_payment_status(PaymentStatus.CANCEL_BY_USER)
             logger.error("Asan Pardakht verification failed.")
 
+    def prepare_pay(self):
+        super(AsanPardakht, self).prepare_pay()
+
+    def _get_gateway_payment_method_parameter(self):
+        # AsanPardakht requires POST method according to official examples
+        return "POST"
+
     def _send_request(self, api_url, data, headers, as_json=True):
         try:
             response = requests.post(api_url, json=data, headers=headers, timeout=10)
