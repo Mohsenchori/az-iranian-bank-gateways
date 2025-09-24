@@ -22,7 +22,7 @@ def callback_view(request):
     if bank_type == "ASANPARDAKHT":
         # Build the redirect URL with all query parameters
         try:
-            custom_callback_url = reverse('asanpardakht_callback')
+            custom_callback_url = 'https://rojafon.com/bogzin-payment/v1/asanpardakht-callback/'
             # Preserve all original query parameters
             query_string = request.GET.urlencode()
             if query_string:
