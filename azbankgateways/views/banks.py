@@ -8,6 +8,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from azbankgateways.bankfactories import BankFactory
 from azbankgateways.exceptions import AZBankGatewaysException
+from apps.bogzin.views import asanpardakht_callback
 
 
 @csrf_exempt
@@ -19,18 +20,20 @@ def callback_view(request):
         logging.critical("Bank type is required. but it doesnt send.")
         raise Http404
 
-    # if bank_type == "ASANPARDAKHT":
-    #     # Build the redirect URL with all query parameters
-    #     try:
-    #         custom_callback_url = 'https://rojafon.com/bogzin-payment/v1/asanpardakht-callback/'
-    #         # Preserve all original query parameters
-    #         query_string = request.GET.urlencode()
-    #         if query_string:
-    #             custom_callback_url += f"?{query_string}"
-    #         return redirect(custom_callback_url)
-    #     except Exception as e:
-    #         logging.error(f"Failed to redirect to AsanPardakht callback: {e}")
-    #         # Fall back to default handling if redirect fails
+    if bank_type == "ASANPARDAKHT":
+        return asanpardakht_callback(request)
+
+        # # Build the redirect URL with all query parameters
+        # try:
+        #     custom_callback_url = 'https://rojafon.com/bogzin-payment/v1/asanpardakht-callback/'
+        #     # Preserve all original query parameters
+        #     query_string = request.GET.urlencode()
+        #     if query_string:
+        #         custom_callback_url += f"?{query_string}"
+        #     return redirect(custom_callback_url)
+        # except Exception as e:
+        #     logging.error(f"Failed to redirect to AsanPardakht callback: {e}")
+        #     # Fall back to default handling if redirect fails
 
 
     factory = BankFactory()
